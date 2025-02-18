@@ -1,0 +1,90 @@
+specification {
+    element person {
+        style {
+            shape person
+            color green
+        }
+    }
+    element softwareSystem
+    element container
+    element component
+}
+
+model {
+  user = person "Пользователь" "Пользователь социальной сети"
+
+  socialNetwork = softwareSystem "Социальная сеть" {
+    apiGateway = container "API Gateway" {
+      description "Маршрутизация запросов и управление доступом"
+      technology "Node.js, Express"
+    }
+
+    userService = container "Сервис пользователей" {
+      description "Управление пользователями и аутентификация"
+      technology "Java, Spring Boot"
+    }
+
+    postService = container "Сервис постов и комментариев" {
+      description "Управление постами и комментариями"
+      technology "Python, FastAPI"
+    }
+
+    statisticsService = container "Сервис статистики" {
+      description "Сбор и анализ статистики использования"
+      technology "Scala, Akka"
+    }
+
+    postgresDb = container "PostgreSQL" {
+      description "Хранение данных пользователей"
+      technology "Database"
+      style {
+        shape cylinder
+      }
+    }
+
+    cassandraDb = container "Cassandra" {
+      description "Хранение данных постов и комментариев"
+      technology "Database"
+      style {
+        shape cylinder
+      }
+    }
+
+    clickhouseDb = container "ClickHouse" {
+      description "Хранение статистических данных"
+      technology "Database"
+      style {
+        shape cylinder
+      }
+    }
+
+
+    kafka = container "Kafka" {
+      description "Обмен событиями между сервисами"
+      technology "Message Broker"
+      style {
+        shape queue
+      }
+    }
+  }
+
+  user -> socialNetwork.apiGateway "Использует" "HTTPS"
+  socialNetwork.apiGateway -> socialNetwork.userService "Маршрутизирует" "JSON/HTTPS"
+  socialNetwork.apiGateway -> socialNetwork.postService "Маршрутизирует" "JSON/HTTPS"
+  socialNetwork.apiGateway -> socialNetwork.statisticsService "Маршрутизирует" "JSON/HTTPS"
+
+  socialNetwork.userService -> socialNetwork.postgresDb "Читает/Пишет" "SQL"
+  socialNetwork.postService -> socialNetwork.cassandraDb "Читает/Пишет" "SQL"
+  socialNetwork.statisticsService -> socialNetwork.clickhouseDb "Читает/Пишет" "SQL"
+
+  socialNetwork.userService -> socialNetwork.kafka "Публикует/Подписывается" "user_events"
+  socialNetwork.postService -> socialNetwork.kafka "Публикует/Подписывается" "post_events"
+  socialNetwork.statisticsService -> socialNetwork.kafka "Подписывается" "user_events, post_events"
+
+}
+
+views {
+  view index {
+    include *
+  }
+}
