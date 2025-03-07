@@ -1,0 +1,206 @@
+openapi: 3.1.0
+info:
+  title: FastAPI
+  version: 0.1.0
+paths:
+  /register/:
+    post:
+      summary: Register
+      operationId: register_register__post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /login/:
+    post:
+      summary: Login
+      operationId: login_login__post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserAuth'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /profile/:
+    get:
+      summary: Get Profile
+      operationId: get_profile_profile__get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+        - HTTPBearer: []
+    put:
+      summary: Update Profile
+      operationId: update_profile_profile__put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+        - HTTPBearer: []
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    UserAuth:
+      properties:
+        username:
+          type: string
+          maxLength: 50
+          minLength: 3
+          title: Username
+        password:
+          type: string
+          minLength: 8
+          title: Password
+      type: object
+      required:
+        - username
+        - password
+      title: UserAuth
+    UserCreate:
+      properties:
+        username:
+          type: string
+          maxLength: 50
+          minLength: 3
+          title: Username
+        email:
+          type: string
+          format: email
+          title: Email
+        password:
+          type: string
+          minLength: 8
+          title: Password
+        first_name:
+          type: string
+          maxLength: 50
+          minLength: 1
+          title: First Name
+        last_name:
+          type: string
+          maxLength: 50
+          minLength: 1
+          title: Last Name
+        birth_date:
+          type: string
+          title: Birth Date
+        phone:
+          type: string
+          maxLength: 15
+          minLength: 10
+          title: Phone
+      type: object
+      required:
+        - username
+        - email
+        - password
+        - first_name
+        - last_name
+        - birth_date
+        - phone
+      title: UserCreate
+    UserUpdate:
+      properties:
+        first_name:
+          type: string
+          maxLength: 50
+          minLength: 1
+          title: First Name
+        last_name:
+          type: string
+          maxLength: 50
+          minLength: 1
+          title: Last Name
+        birth_date:
+          type: string
+          title: Birth Date
+        phone:
+          type: string
+          maxLength: 15
+          minLength: 10
+          title: Phone
+      type: object
+      required:
+        - first_name
+        - last_name
+        - birth_date
+        - phone
+      title: UserUpdate
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer

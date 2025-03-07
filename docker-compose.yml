@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:latest
+    container_name: users_db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: users_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  user-service:
+    build: ./user_service
+    container_name: user_service
+    restart: always
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://user:password@db/users_db
+      SECRET_KEY: your_secret_key
+    ports:
+      - "8000:8000"
+    #command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]  
+  user_service_tests:
+    build:
+      context: ./user_service
+      dockerfile: Dockerfile.test
+    container_name: user_service_tests
+    environment:
+      - DATABASE_URL=postgresql://user:password@db/users_db
+    depends_on:
+      - db
+  api-gateway:
+    build: ./api_gateway
+    container_name: api_gateway
+    restart: always
+    depends_on:
+      - user-service
+    ports:
+      - "8080:8080"
+    #command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
+
+volumes:
+  postgres_data:
