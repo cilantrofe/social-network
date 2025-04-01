@@ -13,8 +13,8 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM")
+SECRET_KEY = os.getenv("SECRET_KEY", "123456")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
 engine = create_engine("postgresql://user:password@db/users_db")
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -124,11 +124,20 @@ def create_jwt_token(username: str):
 
 def decode_jwt_token(token: str):
     try:
+        logger.info(f"Attempting to decode token: {token}")
+
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        logger.info(f"Decoded payload: {payload}")
+
         return payload["sub"]
     except jwt.ExpiredSignatureError:
+        logger.error("Token has expired")
         raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
+        logger.error(f"Invalid token error: {e}")
+        logger.error(f"Token provided: {token}")
+        logger.error(f"Expected SECRET_KEY: {SECRET_KEY}")
+        logger.error(f"Expected ALGORITHM: {ALGORITHM}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
