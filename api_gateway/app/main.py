@@ -223,6 +223,103 @@ async def proxy(path: str, request: Request):
     )
 
 
+@app.post("/posts/{post_id}/view")
+async def view_post(post_id: str, user: dict = Depends(get_current_user)):
+    with grpc.insecure_channel("post-service:50051") as channel:
+        stub = post_service_pb2_grpc.PostServiceStub(channel)
+        try:
+            stub.ViewPost(
+                post_service_pb2.ViewPostRequest(post_id=post_id, user_id=user["id"])
+            )
+            return {"message": "View recorded"}
+        except grpc.RpcError as e:
+            handle_grpc_error(e)
+
+
+@app.post("/posts/{post_id}/like")
+async def like_post(post_id: str, user: dict = Depends(get_current_user)):
+    with grpc.insecure_channel("post-service:50051") as channel:
+        stub = post_service_pb2_grpc.PostServiceStub(channel)
+        try:
+            stub.LikePost(
+                post_service_pb2.LikePostRequest(post_id=post_id, user_id=user["id"])
+            )
+            return {"message": "Like recorded"}
+        except grpc.RpcError as e:
+            handle_grpc_error(e)
+
+
+class CommentCreate(BaseModel):
+    content: str
+
+
+@app.post("/posts/{post_id}/comments")
+async def add_comment(
+    post_id: str, comment: CommentCreate, user: dict = Depends(get_current_user)
+):
+    with grpc.insecure_channel("post-service:50051") as channel:
+        stub = post_service_pb2_grpc.PostServiceStub(channel)
+        try:
+            stub.AddComment(
+                post_service_pb2.AddCommentRequest(
+                    post_id=post_id, user_id=user["id"], content=comment.content
+                )
+            )
+            return {"message": "Comment added"}
+        except grpc.RpcError as e:
+            handle_grpc_error(e)
+
+
+class CommentResponse(BaseModel):
+    id: str
+    post_id: str
+    user_id: str
+    content: str
+    created_at: datetime
+
+
+class CommentListResponse(BaseModel):
+    comments: List[CommentResponse]
+    total: int
+    page: int
+    per_page: int
+
+
+@app.get("/posts/{post_id}/comments", response_model=CommentListResponse)
+async def get_comments(
+    post_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(10, ge=1, le=100),
+    user: dict = Depends(get_current_user),
+):
+    with grpc.insecure_channel("post-service:50051") as channel:
+        stub = post_service_pb2_grpc.PostServiceStub(channel)
+        try:
+            response = stub.GetComments(
+                post_service_pb2.GetCommentsRequest(
+                    post_id=post_id, page=page, per_page=per_page
+                )
+            )
+
+            return CommentListResponse(
+                comments=[
+                    CommentResponse(
+                        id=c.id,
+                        post_id=c.post_id,
+                        user_id=c.user_id,
+                        content=c.content,
+                        created_at=datetime.fromisoformat(c.created_at),
+                    )
+                    for c in response.comments
+                ],
+                total=response.total,
+                page=response.page,
+                per_page=response.per_page,
+            )
+        except grpc.RpcError as e:
+            handle_grpc_error(e)
+
+
 def parse_post(grpc_post):
     return PostResponse(
         id=grpc_post.id,
