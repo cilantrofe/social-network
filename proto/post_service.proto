@@ -2,16 +2,14 @@ syntax = "proto3";
 
 package post;
 
-import "google/protobuf/empty.proto";
-
 service PostService {
   rpc CreatePost (CreatePostRequest) returns (PostResponse);
   rpc GetPost (GetPostRequest) returns (PostResponse);
   rpc UpdatePost (UpdatePostRequest) returns (PostResponse);
   rpc DeletePost (DeletePostRequest) returns (DeletePostResponse);
   rpc ListPosts (ListPostsRequest) returns (ListPostsResponse);
-  rpc ViewPost(ViewPostRequest) returns (google.protobuf.Empty);
-  rpc LikePost(LikePostRequest) returns (google.protobuf.Empty);
+  rpc ViewPost(ViewPostRequest) returns (ViewPostResponse);
+  rpc LikePost(LikePostRequest) returns (LikePostResponse);
   rpc CommentPost(CommentPostRequest) returns (Comment);
   rpc GetComments(GetCommentsRequest) returns (GetCommentsResponse);
 }
@@ -76,6 +74,14 @@ message ViewPostRequest {
 message LikePostRequest {
   string post_id = 1;
   string user_id = 2;
+}
+
+message LikePostResponse {
+  string message = 1;
+}
+
+message ViewPostResponse {
+  string message = 1;
 }
 
 message CommentPostRequest {

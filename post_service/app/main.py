@@ -1,8 +1,10 @@
 from concurrent import futures
+import uuid
 import grpc
 from datetime import datetime
 import sys
 import os
+from kafka_producer import send_event
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../proto")))
 from proto import post_service_pb2, post_service_pb2_grpc
@@ -31,6 +33,7 @@ class Post(Base):
 
 
 class PostServicer(post_service_pb2_grpc.PostServiceServicer):
+    comments_store = {}
     def CreatePost(self, request, context):
         db = SessionLocal()
         try:
@@ -103,6 +106,60 @@ class PostServicer(post_service_pb2_grpc.PostServiceServicer):
             page=request.page,
             per_page=request.per_page,
         )
+     
+    def ViewPost(self, request, context):
+        send_event("post_views", {
+            "post_id": request.post_id,
+            "user_id": request.user_id,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        return post_service_pb2.ViewPostResponse()
+    
+    def LikePost(self, request, context):
+        send_event("post_likes", {
+            "post_id": request.post_id,
+            "user_id": request.user_id,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        return post_service_pb2.LikePostResponse()
+    
+    def CommentPost(self, request, context):
+        comment_id = str(uuid.uuid4())
+        comment = {
+            "id": comment_id,
+            "post_id": request.post_id,
+            "user_id": request.user_id,
+            "content": request.content,
+            "created_at": datetime.utcnow().isoformat()
+        }
+
+        self.comments_store.setdefault(request.post_id, []).append(comment)
+
+        send_event("post_comments", comment)
+
+        return post_service_pb2.Comment(
+            id=comment["id"],
+            post_id=comment["post_id"],
+            user_id=comment["user_id"],
+            content=comment["content"],
+            created_at=comment["created_at"]
+        )
+
+    def GetComments(self, request, context):
+        comments = self.comments_store.get(request.post_id, [])
+        return post_service_pb2.GetCommentsResponse(
+            comments=[
+                post_service_pb2.Comment(
+                    id=c["id"],
+                    post_id=c["post_id"],
+                    user_id=c["user_id"],
+                    content=c["content"],
+                    created_at=c["created_at"]
+                ) for c in comments
+            ]
+        )
+
+        
 
     def _post_to_response(self, post):
         return post_service_pb2.PostResponse(
