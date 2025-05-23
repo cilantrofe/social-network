@@ -204,24 +204,6 @@ async def list_posts(
             handle_grpc_error(e)
 
 
-@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def proxy(path: str, request: Request):
-    print(path)
-    if path.startswith("posts"):
-        raise HTTPException(status_code=404, detail="Handled separately")
-
-    print(f"[PROXY] Forwarding to user-service: /{path}")
-    response = await proxy_request(request, f"/{path}")
-    try:
-        data = response.json()
-    except Exception:
-        data = {"detail": response.text}
-
-    return JSONResponse(
-        status_code=response.status_code,
-        content=data,
-    )
-
 
 @app.post("/posts/{post_id}/view")
 async def view_post(post_id: str, user: dict = Depends(get_current_user)):
@@ -260,8 +242,8 @@ async def add_comment(
     with grpc.insecure_channel("post-service:50051") as channel:
         stub = post_service_pb2_grpc.PostServiceStub(channel)
         try:
-            stub.AddComment(
-                post_service_pb2.AddCommentRequest(
+            stub.CommentPost(
+                post_service_pb2.CommentPostRequest(
                     post_id=post_id, user_id=user["id"], content=comment.content
                 )
             )
@@ -347,3 +329,22 @@ def handle_grpc_error(e: grpc.RpcError):
         getattr(e, "code", lambda: None)(), (500, "Internal server error")
     )
     raise HTTPException(status_code=status_code, detail=detail)
+
+
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy(path: str, request: Request):
+    print(path)
+    if path.startswith("posts"):
+        raise HTTPException(status_code=404, detail="Handled separately")
+
+    print(f"[PROXY] Forwarding to user-service: /{path}")
+    response = await proxy_request(request, f"/{path}")
+    try:
+        data = response.json()
+    except Exception:
+        data = {"detail": response.text}
+
+    return JSONResponse(
+        status_code=response.status_code,
+        content=data,
+    )
