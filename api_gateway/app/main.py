@@ -1,4 +1,5 @@
 from datetime import datetime
+from fastapi import Header
 from typing import List, Optional
 import httpx
 from pydantic import BaseModel
@@ -12,48 +13,6 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../proto")))
 from proto import post_service_pb2, post_service_pb2_grpc
-
-
-async def get_current_user():
-    return {"id": "temp-user-id", "username": "testuser", "email": "test@example.com"}
-
-
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM")
-
-app = FastAPI()
-
-
-def verify_token(token: str):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        print(f"Decoded token: {payload}")
-        return payload["sub"]
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-
-async def proxy_request(request: Request, path: str):
-    async with httpx.AsyncClient() as client:
-        response = await client.request(
-            method=request.method,
-            url=f"http://user-service:8000{path}",
-            headers=request.headers.raw,
-            content=await request.body(),
-        )
-        return response
-
-
-@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def proxy(path: str, request: Request):
-    response = await proxy_request(request, f"/{path}")
-    return JSONResponse(
-        content=response.json(),
-        status_code=response.status_code,
-        headers=dict(response.headers),
-    )
 
 
 class PostCreate(BaseModel):
@@ -88,7 +47,43 @@ class PostListResponse(BaseModel):
     per_page: int
 
 
-# Эндпоинты для постов
+async def get_current_user(authorization: str = Header(...)):
+    token = authorization.replace("Bearer ", "")
+    user_id = verify_token(token)
+    return {"id": user_id}
+
+
+SECRET_KEY = os.getenv("SECRET_KEY", "123456")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+
+app = FastAPI()
+
+
+def verify_token(token: str):
+    print(f"[DEBUG] TOKEN: {token}")
+    print(f"[DEBUG] SECRET_KEY: {SECRET_KEY}")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        print(f"Decoded token: {payload}")
+        return payload["sub"]
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+async def proxy_request(request: Request, path: str):
+    async with httpx.AsyncClient() as client:
+        # Только user-service идёт через HTTP
+        response = await client.request(
+            method=request.method,
+            url=f"http://user-service:8000{path}",
+            headers=request.headers.raw,
+            content=await request.body(),
+        )
+        return response
+
+
 @app.post("/posts", response_model=dict, status_code=201)
 async def create_post(post: PostCreate, user: dict = Depends(get_current_user)):
     with grpc.insecure_channel("post-service:50051") as channel:
@@ -143,7 +138,6 @@ async def update_post(
     with grpc.insecure_channel("post-service:50051") as channel:
         stub = post_service_pb2_grpc.PostServiceStub(channel)
         try:
-            # Проверка прав собственности
             existing_post = stub.GetPost(post_service_pb2.GetPostRequest(id=post_id))
             if existing_post.user_id != user["id"]:
                 raise HTTPException(
@@ -210,6 +204,104 @@ async def list_posts(
             handle_grpc_error(e)
 
 
+
+@app.post("/posts/{post_id}/view")
+async def view_post(post_id: str, user: dict = Depends(get_current_user)):
+    with grpc.insecure_channel("post-service:50051") as channel:
+        stub = post_service_pb2_grpc.PostServiceStub(channel)
+        try:
+            stub.ViewPost(
+                post_service_pb2.ViewPostRequest(post_id=post_id, user_id=user["id"])
+            )
+            return {"message": "View recorded"}
+        except grpc.RpcError as e:
+            handle_grpc_error(e)
+
+
+@app.post("/posts/{post_id}/like")
+async def like_post(post_id: str, user: dict = Depends(get_current_user)):
+    with grpc.insecure_channel("post-service:50051") as channel:
+        stub = post_service_pb2_grpc.PostServiceStub(channel)
+        try:
+            stub.LikePost(
+                post_service_pb2.LikePostRequest(post_id=post_id, user_id=user["id"])
+            )
+            return {"message": "Like recorded"}
+        except grpc.RpcError as e:
+            handle_grpc_error(e)
+
+
+class CommentCreate(BaseModel):
+    content: str
+
+
+@app.post("/posts/{post_id}/comments")
+async def add_comment(
+    post_id: str, comment: CommentCreate, user: dict = Depends(get_current_user)
+):
+    with grpc.insecure_channel("post-service:50051") as channel:
+        stub = post_service_pb2_grpc.PostServiceStub(channel)
+        try:
+            stub.CommentPost(
+                post_service_pb2.CommentPostRequest(
+                    post_id=post_id, user_id=user["id"], content=comment.content
+                )
+            )
+            return {"message": "Comment added"}
+        except grpc.RpcError as e:
+            handle_grpc_error(e)
+
+
+class CommentResponse(BaseModel):
+    id: str
+    post_id: str
+    user_id: str
+    content: str
+    created_at: datetime
+
+
+class CommentListResponse(BaseModel):
+    comments: List[CommentResponse]
+    total: int
+    page: int
+    per_page: int
+
+
+@app.get("/posts/{post_id}/comments", response_model=CommentListResponse)
+async def get_comments(
+    post_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(10, ge=1, le=100),
+    user: dict = Depends(get_current_user),
+):
+    with grpc.insecure_channel("post-service:50051") as channel:
+        stub = post_service_pb2_grpc.PostServiceStub(channel)
+        try:
+            response = stub.GetComments(
+                post_service_pb2.GetCommentsRequest(
+                    post_id=post_id, page=page, per_page=per_page
+                )
+            )
+
+            return CommentListResponse(
+                comments=[
+                    CommentResponse(
+                        id=c.id,
+                        post_id=c.post_id,
+                        user_id=c.user_id,
+                        content=c.content,
+                        created_at=datetime.fromisoformat(c.created_at),
+                    )
+                    for c in response.comments
+                ],
+                total=response.total,
+                page=response.page,
+                per_page=response.per_page,
+            )
+        except grpc.RpcError as e:
+            handle_grpc_error(e)
+
+
 def parse_post(grpc_post):
     return PostResponse(
         id=grpc_post.id,
@@ -224,6 +316,8 @@ def parse_post(grpc_post):
 
 
 def handle_grpc_error(e: grpc.RpcError):
+    print("gRPC ERROR CODE:", e.code())
+    print("gRPC ERROR DETAILS:", e.details())
     error_map = {
         grpc.StatusCode.NOT_FOUND: (404, "Post not found"),
         grpc.StatusCode.PERMISSION_DENIED: (403, "Permission denied"),
@@ -235,3 +329,22 @@ def handle_grpc_error(e: grpc.RpcError):
         getattr(e, "code", lambda: None)(), (500, "Internal server error")
     )
     raise HTTPException(status_code=status_code, detail=detail)
+
+
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy(path: str, request: Request):
+    print(path)
+    if path.startswith("posts"):
+        raise HTTPException(status_code=404, detail="Handled separately")
+
+    print(f"[PROXY] Forwarding to user-service: /{path}")
+    response = await proxy_request(request, f"/{path}")
+    try:
+        data = response.json()
+    except Exception:
+        data = {"detail": response.text}
+
+    return JSONResponse(
+        status_code=response.status_code,
+        content=data,
+    )
